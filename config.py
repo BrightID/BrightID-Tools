@@ -1,2 +1,2 @@
-NODE_ONE_URL = "http://localhost:8529/"
+NODE_ONE_URL = "http://node.brightid.org/"
 BRIGHTID_VERSION = "brightid5"
