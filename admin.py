@@ -61,6 +61,7 @@ def add_context(context, remote_node, passcode):
     # create the collection, if not exists
     if db.has_collection(data['collection']):
         context_coll = db.collection(data['collection'])
+        context_coll.truncate()
     else:
         context_coll = db.create_collection(data['collection'])
 
