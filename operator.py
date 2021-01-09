@@ -8,7 +8,7 @@ import requests
 
 @click.group()
 def main():
-    "Simple CLI for transferring a context's links form a remote BrightID node to the local node"
+    "Simple CLI for transferring a context's links from a remote BrightID node to the local node"
     pass
 
 
