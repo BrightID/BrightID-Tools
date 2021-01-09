@@ -1,45 +1,60 @@
 import sys
+import time
 import click
-import config
-from urllib.parse import urljoin
-from arango import ArangoClient
 import requests
+from arango import ArangoClient
+from urllib.parse import urljoin
+import config
 
 
 @click.group()
 def main():
-    "Simple CLI for transferring a context's links from a remote BrightID node to the local node"
+    "BrightID admin's CLI"
     pass
 
 
 @main.command()
-@click.option('--context-key', type=str, required=True, help='The context key')
+@click.option('--context', type=str, required=True, help="The context's key")
+@click.option('--remote-node', type=str, required=True, help='The remote BrightID node')
 @click.option('--passcode', type=str, required=True, help='The passcode of the context')
-@click.option('--node-url', type=str, help='The remote BrightID node')
-def run(context_key, passcode, node_url):
-    "Load the context data on the local node"
+def add_context(context, remote_node, passcode):
+    "Transferring a context's links from a remote BrightID node to the local node"
+    print('Getting data...')
 
-    if not node_url:
-        node_url = config.NODE_ONE_URL
-    url = urljoin(node_url,
-        f'{config.BRIGHTID_VERSION}/contexts/{context_key}/dump?passcode={passcode}')
-    response = requests.get(url).json()
+    db = ArangoClient().db('_system')
+    variables = db.collection('variables')
+    last_block = variables.get('LAST_BLOCK')['value']
+    # time.sleep(15)
+    if last_block != variables.get('LAST_BLOCK')['value']:
+        print('Error: You should stop the consensus receiver first')
+        return
+
+    response = requests.get(urljoin(remote_node, 'state')).json()
     if response.get('error'):
-        print('Error: ', response['errorMessage'])
+        print(f'Error: {response["errorMessage"]}')
+        return
+
+    if response['data']['lastProcessedBlock'] < last_block:
+        print("Error: the local node's last processed block is greater than the last block of the remote node")
+        return
+
+    response = requests.get(
+        urljoin(remote_node, f'contexts/{context}/dump?passcode={passcode}')).json()
+    if response.get('error'):
+        print(f'Error: {response["errorMessage"]}')
         return
 
     data = response['data']
     context = {
-        '_key': context_key,
+        '_key': context,
         'collection': data['collection'],
         'idsAsHex': data['idsAsHex'],
         'linkAESKey': data['linkAESKey']
     }
 
     print('Updating the local node...')
-    db = ArangoClient().db('_system')
     # upsert the context
-    if db['contexts'].get(context_key):
+    if db['contexts'].get(context):
         db['contexts'].update(context)
     else:
         db['contexts'].insert(context)
