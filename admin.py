@@ -87,5 +87,39 @@ def set_passcode(context, passcode):
     print('Done')
 
 
+@main.command()
+@click.option('--app', type=str, required=True, help="The app's key")
+@click.option('--key', type=str, required=True, help="The app's sponsor privatekey")
+def set_sponsor_private_key(app, key):
+    "Set the app's sponsor privatekey"
+
+    db = ArangoClient().db('_system')
+    app = db['apps'].get(app)
+    if not app:
+        print(f'Error: app not found')
+        return
+
+    app['sponsorPrivateKey'] = key
+    db['apps'].update(app)
+    print('Done')
+
+
+@main.command()
+@click.option('--app', type=str, required=True, help="The app's key")
+@click.option('--key', type=str, required=True, help="The app's testingKey")
+def set_testing_key(app, key):
+    "Set the app's testing key"
+
+    db = ArangoClient().db('_system')
+    app = db['apps'].get(app)
+    if not app:
+        print(f'Error: app not found')
+        return
+
+    app['testingKey'] = key
+    db['apps'].update(app)
+    print('Done')
+
+
 if __name__ == '__main__':
     main()
