@@ -1,9 +1,10 @@
-from setuptools import setup
+from setuptools import setup, find_packages
 
 setup(
-    name='brightid-cli',
+    name='brightidcli',
     version='0.1',
-    py_modules=['brightid-cli'],
+    packages=find_packages(),
+    include_package_data=True,
     install_requires=[
         'certifi==2020.12.5',
         'chardet==3.0.4',
@@ -16,6 +17,6 @@ setup(
     ],
     entry_points='''
         [console_scripts]
-        brightid-cli=main:cli
+        brightid-cli=brightidcli.main:cli
     ''',
 )

@@ -1,5 +1,5 @@
 import click
-from commands.admin import admin
+from .commands.admin import admin
 
 
 @click.group()
