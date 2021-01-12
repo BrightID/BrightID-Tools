@@ -31,10 +31,13 @@ Commands under `admin` namespace enable BrightID node admins manage their nodes
 
     Options:
       --context TEXT      The id of the context  [required]
-      --remote-node TEXT  The address of the remote BrightID node  [required]
+      --remote-node TEXT  The address of the remote BrightID node, e.g.
+                          http://node.brightid.org  [required]
+
       --passcode TEXT     The one time passcode that the admin of the remote
                           BrightID node sets to authorize getting contextIds from
                           that node  [required]
+
 
 ##### set-passcode
 
