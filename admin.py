@@ -1,49 +1,61 @@
 import sys
+import os
+import socket
+import base64
 import time
 import click
+import ed25519
 import requests
 from arango import ArangoClient
 from urllib.parse import urljoin
 
+sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+host = os.environ.get('BN_ARANGO_HOST', 'localhost')
+port = int(os.environ.get('BN_ARANGO_PORT', 8529))
+result = sock.connect_ex((host, port))
+sock.close()
+if result != 0:
+    print(f'Arango database is not running on {host}:{port}. The host and the port for accessing database can be configured using BN_ARANGO_HOST and BN_ARANGO_PORT env variables.')
+    sys.exit()
+
+db = ArangoClient(hosts=f'http://{host}:{port}').db('_system')
 
 @click.group()
 def main():
-    "BrightID admin's CLI"
+    "A command line client for BrightID node admins"
     pass
 
 
 @main.command()
-@click.option('--context', type=str, required=True, help="The context's key")
-@click.option('--remote-node', type=str, required=True, help='The remote BrightID node')
-@click.option('--passcode', type=str, required=True, help='The passcode of the context')
-def add_context(context, remote_node, passcode):
-    "Transferring a context's links from a remote BrightID node to the local node"
-    print('Getting data...')
+@click.option('--context', type=str, required=True, help='The id of the context')
+@click.option('--remote-node', type=str, required=True, help='The address of the remote BrightID node')
+@click.option('--passcode', type=str, required=True, help='The one time passcode that the admin of the remote BrightID node sets to authorize getting contextIds from that node')
+def import_context(context, remote_node, passcode):
+    "Imports a new context to the node by getting contextIds linked under that context from a remote BrightID node"
 
-    db = ArangoClient().db('_system')
     variables = db.collection('variables')
     last_block = variables.get('LAST_BLOCK')['value']
-    time.sleep(15)
+    url = urljoin(remote_node, '/brightid/v5/state')
+    try:
+        state = requests.get(url).json()['data']
+    except:
+        return print(f'Error: {url} is not a valid remote node address or is not accessible')
+
+    if state['lastProcessedBlock'] < last_block:
+        return print("Error: The state of remote node is older than local's one. Try again after the remote node synced.")
+
+    print('Checking if the consensus receiver is stopped ...')
+    time.sleep(10)
     if last_block != variables.get('LAST_BLOCK')['value']:
-        print('Error: You should stop the consensus receiver first')
-        return
+        return print('Error: The consensus receiver is not stopped. Stop it using following command and try again.\n$ docker-compose stop consensus_receiver')
 
-    response = requests.get(urljoin(remote_node, 'state')).json()
-    if response.get('error'):
-        print(f'Error: {response["errorMessage"]}')
-        return
+    print('Getting data...')
+    url = urljoin(remote_node, f'/brightid/v5/contexts/{context}/dump?passcode={passcode}')
+    res = requests.get(url).json()
+    if res.get('error'):
+        return print(f'Error: {res["errorMessage"]}')
 
-    if response['data']['lastProcessedBlock'] < last_block:
-        print("Error: the local node's last processed block is greater than the last block of the remote node")
-        return
-
-    response = requests.get(
-        urljoin(remote_node, f'contexts/{context}/dump?passcode={passcode}')).json()
-    if response.get('error'):
-        print(f'Error: {response["errorMessage"]}')
-        return
-
-    data = response['data']
+    data = res['data']
     context_data = {
         '_key': context,
         'collection': data['collection'],
@@ -51,7 +63,7 @@ def add_context(context, remote_node, passcode):
         'linkAESKey': data['linkAESKey']
     }
 
-    print('Updating the local node...')
+    print('Importing context ...')
     # upsert the context
     if db['contexts'].get(context):
         db['contexts'].update(context_data)
@@ -60,27 +72,25 @@ def add_context(context, remote_node, passcode):
 
     # create the collection, if not exists
     if db.has_collection(data['collection']):
-        context_coll = db.collection(data['collection'])
-        context_coll.truncate()
+        contextIds_coll = db.collection(data['collection'])
+        contextIds_coll.truncate()
     else:
-        context_coll = db.create_collection(data['collection'])
+        contextIds_coll = db.create_collection(data['collection'])
 
     # insert the contextIds
-    context_coll.import_bulk(data['contextIds'])
+    contextIds_coll.import_bulk(data['contextIds'])
     print('Done')
 
 
 @main.command()
-@click.option('--context', type=str, required=True, help="The context's key")
-@click.option('--passcode', type=str, required=True, help='The passcode of the context')
+@click.option('--context', type=str, required=True, help='The id of the context')
+@click.option('--passcode', type=str, required=True, help='The one time passcode')
 def set_passcode(context, passcode):
-    "Add a one time passcode to the context document"
+    "Sets a one time passcode on a context to authorize getting contextIds linked under that context by other nodes"
 
-    db = ArangoClient().db('_system')
     context = db['contexts'].get(context)
     if not context:
-        print(f'Error: context not found')
-        return
+        return print('Error: context not found')
 
     context['passcode'] = passcode
     db['contexts'].update(context)
@@ -88,16 +98,21 @@ def set_passcode(context, passcode):
 
 
 @main.command()
-@click.option('--app', type=str, required=True, help="The app's key")
-@click.option('--key', type=str, required=True, help="The app's sponsor privatekey")
+@click.option('--app', type=str, required=True, help="The id of the app")
+@click.option('--key', type=str, required=True, help="The private key for signing sponsor operations")
 def set_sponsor_private_key(app, key):
-    "Set the app's sponsor privatekey"
-
-    db = ArangoClient().db('_system')
+    "Sets a private key that enables the node signing sponsor operations for an app"
     app = db['apps'].get(app)
     if not app:
-        print(f'Error: app not found')
-        return
+        return print('Error: app not found')
+
+    try:
+        private = base64.b64decode(key)
+        public = ed25519.SigningKey(private).get_verifying_key().to_bytes()
+        public = base64.b64encode(public).decode('ascii')
+        assert public == app['sponsorPublicKey']
+    except Exception as e:
+        return print("Private key does not match the app's sponsor public key")
 
     app['sponsorPrivateKey'] = key
     db['apps'].update(app)
@@ -105,16 +120,14 @@ def set_sponsor_private_key(app, key):
 
 
 @main.command()
-@click.option('--app', type=str, required=True, help="The app's key")
-@click.option('--key', type=str, required=True, help="The app's testingKey")
+@click.option('--app', type=str, required=True, help="The id of the app")
+@click.option('--key', type=str, required=True, help="The testing key")
 def set_testing_key(app, key):
-    "Set the app's testing key"
+    "Sets a testing key on an app to enable its developers block getting verification for specific contextIds for testing purpose"
 
-    db = ArangoClient().db('_system')
     app = db['apps'].get(app)
     if not app:
-        print(f'Error: app not found')
-        return
+        return print('Error: app not found')
 
     app['testingKey'] = key
     db['apps'].update(app)

@@ -5,3 +5,4 @@ idna==2.10
 requests==2.25.0
 urllib3==1.26.2
 python-arango==5.4.0
+ed25519==1.5
