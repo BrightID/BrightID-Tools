@@ -29,7 +29,7 @@ def admin():
 
 @admin.command()
 @click.option('--context', type=str, required=True, help='The id of the context')
-@click.option('--remote-node', type=str, required=True, help='The address of the remote BrightID node')
+@click.option('--remote-node', type=str, required=True, help='The address of the remote BrightID node, e.g. http://node.brightid.org')
 @click.option('--passcode', type=str, required=True, help='The one time passcode that the admin of the remote BrightID node sets to authorize getting contextIds from that node')
 def import_context(context, remote_node, passcode):
     "Imports a new context to the node by getting contextIds linked under that context from a remote BrightID node"
