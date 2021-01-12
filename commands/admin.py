@@ -9,30 +9,32 @@ import requests
 from arango import ArangoClient
 from urllib.parse import urljoin
 
-sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-host = os.environ.get('BN_ARANGO_HOST', 'localhost')
-port = int(os.environ.get('BN_ARANGO_PORT', 8529))
-result = sock.connect_ex((host, port))
-sock.close()
-if result != 0:
-    print(f'Arango database is not running on {host}:{port}. The host and the port for accessing database can be configured using BN_ARANGO_HOST and BN_ARANGO_PORT env variables.')
-    sys.exit()
+def get_db():
+    sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    host = os.environ.get('BN_ARANGO_HOST', 'localhost')
+    port = int(os.environ.get('BN_ARANGO_PORT', 8529))
+    result = sock.connect_ex((host, port))
+    sock.close()
+    if result != 0:
+        print(f'Arango database is not running on {host}:{port}. The host and the port for accessing database can be configured using BN_ARANGO_HOST and BN_ARANGO_PORT env variables.')
+        sys.exit()
 
-db = ArangoClient(hosts=f'http://{host}:{port}').db('_system')
+    return ArangoClient(hosts=f'http://{host}:{port}').db('_system')
 
 @click.group()
-def main():
-    "A command line client for BrightID node admins"
+def admin():
+    "Commands for BrightID node admins"
     pass
 
 
-@main.command()
+@admin.command()
 @click.option('--context', type=str, required=True, help='The id of the context')
 @click.option('--remote-node', type=str, required=True, help='The address of the remote BrightID node')
 @click.option('--passcode', type=str, required=True, help='The one time passcode that the admin of the remote BrightID node sets to authorize getting contextIds from that node')
 def import_context(context, remote_node, passcode):
     "Imports a new context to the node by getting contextIds linked under that context from a remote BrightID node"
 
+    db = get_db()
     variables = db.collection('variables')
     last_block = variables.get('LAST_BLOCK')['value']
     url = urljoin(remote_node, '/brightid/v5/state')
@@ -82,12 +84,13 @@ def import_context(context, remote_node, passcode):
     print('Done')
 
 
-@main.command()
+@admin.command()
 @click.option('--context', type=str, required=True, help='The id of the context')
 @click.option('--passcode', type=str, required=True, help='The one time passcode')
 def set_passcode(context, passcode):
     "Sets a one time passcode on a context to authorize getting contextIds linked under that context by other nodes"
 
+    db = get_db()
     context = db['contexts'].get(context)
     if not context:
         return print('Error: context not found')
@@ -97,11 +100,13 @@ def set_passcode(context, passcode):
     print('Done')
 
 
-@main.command()
+@admin.command()
 @click.option('--app', type=str, required=True, help="The id of the app")
 @click.option('--key', type=str, required=True, help="The private key for signing sponsor operations")
 def set_sponsor_private_key(app, key):
     "Sets a private key that enables the node signing sponsor operations for an app"
+
+    db = get_db()
     app = db['apps'].get(app)
     if not app:
         return print('Error: app not found')
@@ -119,12 +124,13 @@ def set_sponsor_private_key(app, key):
     print('Done')
 
 
-@main.command()
+@admin.command()
 @click.option('--app', type=str, required=True, help="The id of the app")
 @click.option('--key', type=str, required=True, help="The testing key")
 def set_testing_key(app, key):
     "Sets a testing key on an app to enable its developers block getting verification for specific contextIds for testing purpose"
 
+    db = get_db()
     app = db['apps'].get(app)
     if not app:
         return print('Error: app not found')
@@ -132,7 +138,3 @@ def set_testing_key(app, key):
     app['testingKey'] = key
     db['apps'].update(app)
     print('Done')
-
-
-if __name__ == '__main__':
-    main()
