@@ -51,7 +51,7 @@ def import_context(context, remote_node, passcode):
     if last_block != variables.get('LAST_BLOCK')['value']:
         return print('Error: The consensus receiver is not stopped. Stop it using following command and try again.\n$ docker-compose stop consensus_receiver')
 
-    print('Getting data...')
+    print('Getting data ...')
     url = urljoin(remote_node, f'/brightid/v5/contexts/{context}/dump?passcode={passcode}')
     res = requests.get(url).json()
     if res.get('error'):
