@@ -6,7 +6,7 @@ The brightid-cli is a command line interface for BrightID.
 
 The brightid-cli can be installed using:
 
-    $ sudo pip3 install brightid-cli
+    $ sudo pip3 install brightidcli
 
 It also can be installed from source with:
 
